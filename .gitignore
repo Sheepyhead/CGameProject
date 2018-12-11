@@ -1,5 +1,6 @@
-# Created by https://www.gitignore.io/api/c++,windows,visualstudio
-# Edit at https://www.gitignore.io/?templates=c++,windows,visualstudio
+
+# Created by https://www.gitignore.io/api/c++,windows,visualstudio,visualstudiocode
+# Edit at https://www.gitignore.io/?templates=c++,windows,visualstudio,visualstudiocode
 
 ### C++ ###
 # Prerequisites
@@ -34,6 +35,17 @@
 *.exe
 *.out
 *.app
+
+### VisualStudioCode ###
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+### VisualStudioCode Patch ###
+# Ignore all local history of files
+.history
 
 ### Windows ###
 # Windows thumbnail cache files
@@ -398,4 +410,4 @@ ASALocalRun/
 # Local History for Visual Studio
 .localhistory/
 
-# End of https://www.gitignore.io/api/c++,windows,visualstudio
+# End of https://www.gitignore.io/api/c++,windows,visualstudio,visualstudiocode
