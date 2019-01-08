@@ -5,11 +5,14 @@
 #include <dsound.h>
 #include <math.h>
 
+
 #define internal static
 #define local_persist static
 #define global_variable static
 
 #define pi32 3.14159265359f
+
+#include "handmade.cpp"
 
 typedef int32_t bool32_t;
 
@@ -20,7 +23,6 @@ struct win32_offscreen_buffer
     int width;
     int height;
     int pitch;
-    int bytesPerPixel;
 };
 
 #define X_INPUT_GET_STATE(name) DWORD WINAPI name(DWORD dwUserIndex, XINPUT_STATE *pState)
@@ -146,26 +148,6 @@ internal win32_window_dimension win32GetWindowDimension(HWND window)
     return result;
 }
 
-internal void renderWeirdGradient(win32_offscreen_buffer *buffer, int xOffset, int yOffset)
-{
-    int width = buffer->width;
-    int height = buffer->height;
-    uint8_t *row = (uint8_t *)buffer->memory;
-    for (int y = 0; y < buffer->height; y++)
-    {
-        uint32_t *pixel = (uint32_t *)row;
-        for (int x = 0; x < buffer->width; x++)
-        {
-            uint8_t blue = (x + xOffset);
-            uint8_t green = (y + yOffset);
-            uint8_t red = blue * green;
-
-            *pixel++ = ((((red << 8) | green) << 8) | blue);
-        }
-        row += buffer->pitch;
-    }
-}
-
 internal void win32ResizeDIBSection(win32_offscreen_buffer *buffer, int width, int height)
 {
 
@@ -176,7 +158,7 @@ internal void win32ResizeDIBSection(win32_offscreen_buffer *buffer, int width, i
 
     buffer->width = width;
     buffer->height = height;
-    buffer->bytesPerPixel = 4;
+    int bytesPerPixel = 4;
 
     buffer->info.bmiHeader.biSize = sizeof(buffer->info.bmiHeader);
     buffer->info.bmiHeader.biWidth = buffer->width;
@@ -185,12 +167,9 @@ internal void win32ResizeDIBSection(win32_offscreen_buffer *buffer, int width, i
     buffer->info.bmiHeader.biBitCount = 32;
     buffer->info.bmiHeader.biCompression = BI_RGB;
 
-    int bitmapMemorySize = buffer->bytesPerPixel * buffer->width * buffer->height;
+    int bitmapMemorySize = bytesPerPixel * buffer->width * buffer->height;
     buffer->memory = VirtualAlloc(0, bitmapMemorySize, MEM_COMMIT, PAGE_READWRITE);
-
-    renderWeirdGradient(buffer, 128, 128);
-
-    buffer->pitch = width * buffer->bytesPerPixel;
+    buffer->pitch = width * bytesPerPixel;
 }
 
 internal void win32DisplayBufferInWindow(HDC deviceContext, int windowWidth, int windowHeight, win32_offscreen_buffer *buffer, int x, int y, int width, int height)
@@ -236,7 +215,7 @@ internal LRESULT CALLBACK win32MainWindowCallback(HWND window, UINT message, WPA
     {
         uint32_t vkCode = wParam;
         bool32_t wasDown = ((lParam & (1 << 30)) != 0);
-        bool32_t isDown = ((lParam & (1 << 31)) == 0); //TODO: Verify that this is correct
+        bool32_t isDown = ((lParam & (1 << 31)) == 0); 
 
         if (wasDown != isDown)
         {
@@ -367,8 +346,12 @@ void win32FillSoundBuffer(win32_sound_output *soundOutput, DWORD byteToLock, DWO
     }
 }
 
+#if HANDMADE_WIN32
 int WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showCode)
 {
+#else
+int main(int argc, char **argv)
+#endif
     LARGE_INTEGER performanceFrequencyResult;
     QueryPerformanceFrequency(&performanceFrequencyResult);
     uint64_t performanceFrequency = performanceFrequencyResult.QuadPart;
@@ -475,8 +458,12 @@ int WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int s
                 vibration.wLeftMotorSpeed = 60000;
                 vibration.wRightMotorSpeed = 60000;
                 XInputSetState(0, &vibration);
-
-                renderWeirdGradient(&_globalBackbuffer, xOffset, yOffset);
+                game_offscreen_buffer buffer = {};
+                buffer.height = _globalBackbuffer.height;
+                buffer.memory = _globalBackbuffer.memory;
+                buffer.width = _globalBackbuffer.width;
+                buffer.pitch = _globalBackbuffer.pitch;
+                GameUpdateAndRender(&buffer, xOffset, yOffset);
 
                 HDC deviceContext = GetDC(window);
 
@@ -520,11 +507,11 @@ int WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int s
                 float msPerFrame = ((1000.0f * (float)counterElapsed) / (float)performanceFrequency);
                 float fps = 1000.0f / (float)msPerFrame;
                 float megaCyclesPerFrame = ((float)cyclesElapsed / (1000.0f * 1000.0f));
-
+/*
                 char buffer[256];
                 sprintf(buffer, "%.02fms,  %.02ff/s,  %.02fMc/f\n", msPerFrame, fps, megaCyclesPerFrame);
                 OutputDebugString(buffer);
-
+*/
                 lastCounter = endCounter;
                 lastCycleCount = endCycleCount;
             } // Game loop end
