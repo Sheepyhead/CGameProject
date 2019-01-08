@@ -371,7 +371,7 @@ int WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int s
 {
     LARGE_INTEGER performanceFrequencyResult;
     QueryPerformanceFrequency(&performanceFrequencyResult);
-    int64_t performanceFrequency = performanceFrequencyResult.QuadPart;
+    uint64_t performanceFrequency = performanceFrequencyResult.QuadPart;
 
     win32LoadXInput();
     WNDCLASS windowClass = {};
@@ -513,9 +513,9 @@ int WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int s
                 LARGE_INTEGER endCounter;
                 QueryPerformanceCounter(&endCounter);
 
-                int64_t endCycleCount = __rdtsc();
+                uint64_t endCycleCount = __rdtsc();
 
-                int64_t cyclesElapsed = endCycleCount - lastCycleCount;
+                uint64_t cyclesElapsed = endCycleCount - lastCycleCount;
                 int64_t counterElapsed = endCounter.QuadPart - lastCounter.QuadPart;
                 float msPerFrame = ((1000.0f * (float)counterElapsed) / (float)performanceFrequency);
                 float fps = 1000.0f / (float)msPerFrame;
