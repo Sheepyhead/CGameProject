@@ -1,5 +1,6 @@
 #include <windows.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <Xinput.h>
 #include <dsound.h>
 #include <math.h>
@@ -368,6 +369,10 @@ void win32FillSoundBuffer(win32_sound_output *soundOutput, DWORD byteToLock, DWO
 
 int WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int showCode)
 {
+    LARGE_INTEGER performanceFrequencyResult;
+    QueryPerformanceFrequency(&performanceFrequencyResult);
+    int64_t performanceFrequency = performanceFrequencyResult.QuadPart;
+
     win32LoadXInput();
     WNDCLASS windowClass = {};
 
@@ -377,6 +382,7 @@ int WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int s
     windowClass.lpfnWndProc = win32MainWindowCallback;
     windowClass.hInstance = instance;
     windowClass.lpszClassName = "HandmadeHeroWindowClass";
+
     if (RegisterClass(&windowClass))
     {
         HWND window = CreateWindowEx(
@@ -412,8 +418,13 @@ int WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int s
             win32FillSoundBuffer(&soundOutput, 0, soundOutput.secondaryBufferSize);
             globalSecondaryBuffer->Play(0, 0, DSBPLAY_LOOPING);
 
+            LARGE_INTEGER lastCounter;
+            QueryPerformanceCounter(&lastCounter);
+
+            int64_t lastCycleCount = __rdtsc();
+
             _running = true;
-            while (_running)
+            while (_running) // Game loop start
             {
                 MSG message;
                 while (PeekMessage(&message, 0, 0, 0, PM_REMOVE))
@@ -498,7 +509,25 @@ int WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR commandLine, int s
                 ReleaseDC(window, deviceContext);
 
                 ++xOffset;
-            }
+
+                LARGE_INTEGER endCounter;
+                QueryPerformanceCounter(&endCounter);
+
+                int64_t endCycleCount = __rdtsc();
+
+                int64_t cyclesElapsed = endCycleCount - lastCycleCount;
+                int64_t counterElapsed = endCounter.QuadPart - lastCounter.QuadPart;
+                float msPerFrame = ((1000.0f * (float)counterElapsed) / (float)performanceFrequency);
+                float fps = 1000.0f / (float)msPerFrame;
+                float megaCyclesPerFrame = ((float)cyclesElapsed / (1000.0f * 1000.0f));
+
+                char buffer[256];
+                sprintf(buffer, "%.02fms,  %.02ff/s,  %.02fMc/f\n", msPerFrame, fps, megaCyclesPerFrame);
+                OutputDebugString(buffer);
+
+                lastCounter = endCounter;
+                lastCycleCount = endCycleCount;
+            } // Game loop end
         }
         else
         {
