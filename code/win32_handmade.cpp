@@ -5,7 +5,6 @@
 #include <dsound.h>
 #include <math.h>
 
-
 #define internal static
 #define local_persist static
 #define global_variable static
@@ -215,7 +214,7 @@ internal LRESULT CALLBACK win32MainWindowCallback(HWND window, UINT message, WPA
     {
         uint32_t vkCode = wParam;
         bool32_t wasDown = ((lParam & (1 << 30)) != 0);
-        bool32_t isDown = ((lParam & (1 << 31)) == 0); 
+        bool32_t isDown = ((lParam & (1 << 31)) == 0);
 
         if (wasDown != isDown)
         {
@@ -300,9 +299,38 @@ struct win32_sound_output
     int wavePeriod;
     int bytesPerSample;
     int secondaryBufferSize;
+    int latencySampleCount;
 };
 
-void win32FillSoundBuffer(win32_sound_output *soundOutput, DWORD byteToLock, DWORD bytesToWrite)
+void win32ClearSoundBuffer(win32_sound_output *soundOutput)
+{
+    VOID *region1;
+    DWORD region1Size;
+    VOID *region2;
+    DWORD region2Size;
+
+    if (SUCCEEDED(globalSecondaryBuffer->Lock(0, soundOutput->secondaryBufferSize,
+                                              &region1, &region1Size,
+                                              &region2, &region2Size,
+                                              0)))
+    {
+        uint8_t *destSample = (uint8_t *)region1;
+        for (DWORD byteIndex = 0; byteIndex < region1Size; ++byteIndex)
+        {
+            *destSample++ = 0;
+        }
+
+        destSample = (uint8_t *)region2;
+        for (DWORD byteIndex = 0; byteIndex < region2Size; ++byteIndex)
+        {
+            *destSample++ = 0;
+        }
+
+        globalSecondaryBuffer->Unlock(region1, region1Size, region2, region2Size);
+    }
+}
+
+void win32FillSoundBuffer(win32_sound_output *soundOutput, DWORD byteToLock, DWORD bytesToWrite, game_sound_output_buffer *sourceBuffer)
 {
     VOID *region1;
     DWORD region1Size;
@@ -316,28 +344,23 @@ void win32FillSoundBuffer(win32_sound_output *soundOutput, DWORD byteToLock, DWO
             &region2, &region2Size,
             0)))
     {
-        int16_t *sampleOut = (int16_t *)region1;
+        int16_t *destSample = (int16_t *)region1;
+        int16_t *sourceSample = sourceBuffer->samples;
         DWORD region1SampleCount = region1Size / soundOutput->bytesPerSample;
         for (DWORD sampleIndex = 0; sampleIndex < region1SampleCount; ++sampleIndex)
         {
-            float t = 2.0f * pi32 * (float)soundOutput->runningSampleIndex / (float)soundOutput->wavePeriod;
-            float sineValue = sinf(t);
-            int16_t sampleValue = (int16_t)(sineValue * soundOutput->toneVolume);
-            *sampleOut++ = sampleValue;
-            *sampleOut++ = sampleValue;
+            *destSample++ = *sourceSample++;
+            *destSample++ = *sourceSample++;
 
             ++soundOutput->runningSampleIndex;
         }
 
-        sampleOut = (int16_t *)region2;
+        destSample = (int16_t *)region2;
         DWORD region2SampleCount = region2Size / soundOutput->bytesPerSample;
         for (DWORD sampleIndex = 0; sampleIndex < region2SampleCount; ++sampleIndex)
         {
-            float t = 2.0f * pi32 * (float)soundOutput->runningSampleIndex / (float)soundOutput->wavePeriod;
-            float sineValue = sinf(t);
-            int16_t sampleValue = (int16_t)(sineValue * soundOutput->toneVolume);
-            *sampleOut++ = sampleValue;
-            *sampleOut++ = sampleValue;
+            *destSample++ = *sourceSample++;
+            *destSample++ = *sourceSample++;
 
             ++soundOutput->runningSampleIndex;
         }
@@ -392,13 +415,13 @@ int main(int argc, char **argv)
             soundOutput.samplesPerSecond = 48000;
             soundOutput.toneFrequency = 256;
             soundOutput.toneVolume = 3000;
-            soundOutput.runningSampleIndex = 0;
             soundOutput.wavePeriod = soundOutput.samplesPerSecond / soundOutput.toneFrequency;
             soundOutput.bytesPerSample = sizeof(int16_t) * 2;
             soundOutput.secondaryBufferSize = soundOutput.samplesPerSecond * soundOutput.bytesPerSample;
+            soundOutput.latencySampleCount = soundOutput.samplesPerSecond / 15;
 
             win32InitDSound(window, soundOutput.samplesPerSecond, soundOutput.secondaryBufferSize);
-            win32FillSoundBuffer(&soundOutput, 0, soundOutput.secondaryBufferSize);
+            win32ClearSoundBuffer(&soundOutput);
             globalSecondaryBuffer->Play(0, 0, DSBPLAY_LOOPING);
 
             LARGE_INTEGER lastCounter;
@@ -458,37 +481,51 @@ int main(int argc, char **argv)
                 vibration.wLeftMotorSpeed = 60000;
                 vibration.wRightMotorSpeed = 60000;
                 XInputSetState(0, &vibration);
+
+                DWORD byteToLock = 0;
+                DWORD targetCursor = 0;
+                DWORD bytesToWrite = 0;
+                DWORD playCursor = 0;
+                DWORD writeCursor = 0;
+                bool32_t soundIsValid = false;
+                if (SUCCEEDED(globalSecondaryBuffer->GetCurrentPosition(&playCursor, &writeCursor)))
+                {
+                    byteToLock = ((soundOutput.runningSampleIndex * soundOutput.bytesPerSample) % soundOutput.secondaryBufferSize);
+                    targetCursor = ((playCursor + (soundOutput.latencySampleCount * soundOutput.bytesPerSample)) % soundOutput.secondaryBufferSize);
+                    if (byteToLock > targetCursor)
+                    {
+                        bytesToWrite = soundOutput.secondaryBufferSize - byteToLock;
+                        bytesToWrite += targetCursor;
+                    }
+                    else
+                    {
+                        bytesToWrite = targetCursor - byteToLock;
+                    }
+
+                    soundIsValid = true;
+                }
+
+                int16_t samples[48000 * 2];
+                game_sound_output_buffer soundBuffer = {};
+                soundBuffer.samplesPerSecond = soundOutput.samplesPerSecond;
+                soundBuffer.sampleCount = bytesToWrite / soundOutput.bytesPerSample;
+                soundBuffer.samples = samples;
+
                 game_offscreen_buffer buffer = {};
                 buffer.height = _globalBackbuffer.height;
                 buffer.memory = _globalBackbuffer.memory;
                 buffer.width = _globalBackbuffer.width;
                 buffer.pitch = _globalBackbuffer.pitch;
-                GameUpdateAndRender(&buffer, xOffset, yOffset);
+                GameUpdateAndRender(&buffer, xOffset, yOffset, &soundBuffer);
 
                 HDC deviceContext = GetDC(window);
 
                 // DirectSound output test
-                DWORD playCursor;
-                DWORD writeCursor;
-                if (SUCCEEDED(globalSecondaryBuffer->GetCurrentPosition(&playCursor, &writeCursor)))
-                {
-                    DWORD byteToLock = (soundOutput.runningSampleIndex * soundOutput.bytesPerSample) % soundOutput.secondaryBufferSize;
-                    DWORD bytesToWrite;
-                    if (byteToLock == playCursor)
-                    {
-                        bytesToWrite = 0;
-                    }
-                    else if (byteToLock > playCursor)
-                    {
-                        bytesToWrite = soundOutput.secondaryBufferSize - byteToLock;
-                        bytesToWrite += playCursor;
-                    }
-                    else
-                    {
-                        bytesToWrite = playCursor - byteToLock;
-                    }
 
-                    win32FillSoundBuffer(&soundOutput, byteToLock, bytesToWrite);
+                if (soundIsValid)
+                {
+
+                    win32FillSoundBuffer(&soundOutput, byteToLock, bytesToWrite, &soundBuffer);
                 }
                 win32_window_dimension dimension = win32GetWindowDimension(window);
 
@@ -507,7 +544,7 @@ int main(int argc, char **argv)
                 float msPerFrame = ((1000.0f * (float)counterElapsed) / (float)performanceFrequency);
                 float fps = 1000.0f / (float)msPerFrame;
                 float megaCyclesPerFrame = ((float)cyclesElapsed / (1000.0f * 1000.0f));
-/*
+                /*
                 char buffer[256];
                 sprintf(buffer, "%.02fms,  %.02ff/s,  %.02fMc/f\n", msPerFrame, fps, megaCyclesPerFrame);
                 OutputDebugString(buffer);

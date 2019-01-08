@@ -12,9 +12,15 @@ struct game_offscreen_buffer
     int pitch;
 };
 
-internal void GameUpdateAndRender(game_offscreen_buffer *buffer, int blueOffset, int greenOffset);
+struct game_sound_output_buffer
+{
+    int16_t *samples;
+    int sampleCount;
+    int samplesPerSecond;
+};
 
-internal void renderWeirdGradient(game_offscreen_buffer *buffer, int xOffset, int yOffset);
+internal void GameUpdateAndRender(game_offscreen_buffer *buffer, int blueOffset, int greenOffset, game_sound_output_buffer *soundBuffer);
+
 /*
  * Services that the platform layer provides to the game
  */
