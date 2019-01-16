@@ -1,18 +1,20 @@
 #include "handmade.h"
 
-internal void GameOutputSound(game_sound_output_buffer *soundBuffer) {
+internal void GameOutputSound(game_sound_output_buffer *soundBuffer)
+{
     local_persist float tSine;
     int16_t toneVolume = 3000;
     int toneFrequency = 256;
 
     int wavePeriod = soundBuffer->samplesPerSecond / toneFrequency;
 
+    int16_t *soundOut = soundBuffer->samples;
     for (int sampleIndex = 0; sampleIndex < soundBuffer->sampleCount; ++sampleIndex)
     {
         float sineValue = sinf(tSine);
         int16_t sampleValue = (int16_t)(sineValue * toneVolume);
-        *soundBuffer->samples++ = sampleValue;
-        *soundBuffer->samples++ = sampleValue;
+        *soundOut++ = sampleValue;
+        *soundOut++ = sampleValue;
 
         tSine += 2.0f * pi32 * 1.0f / (float)wavePeriod;
     }
